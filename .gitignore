@@ -4,5 +4,10 @@ submission/
 *.zip
 __pycache__/
 *.tar.gz
+.venv/
+explorer/index.duckdb
+explorer/.index.duckdb.*.tmp
+explorer/frontend/node_modules/
+*.tsbuildinfo
 
 .idea
