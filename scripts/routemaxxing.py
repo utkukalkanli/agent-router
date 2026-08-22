@@ -1448,6 +1448,9 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
         if certified_cost > logged_cost + 1e-12:
             raise AssertionError("negative certified savings: %s" % trajectory.trajectory_id)
         adaptive_cost, adaptive_penalty = route_cost(trajectory, adaptive, pricing)
+        adaptive_adjusted_cost, _ = route_cost(
+            trajectory, adaptive, pricing, output_ratios=output_sensitivity,
+        )
         adjusted_cost, _ = route_cost(
             trajectory, certified, pricing, output_ratios=output_sensitivity,
         )
@@ -1457,10 +1460,16 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
                 % trajectory.trajectory_id
             )
         # A conditional escalation is never emitted if the completed logged-state
-        # route would erase all fixed-shape savings.
-        if adaptive_cost > logged_cost + 1e-12:
+        # route would erase fixed-shape or behavior-adjusted savings.
+        adaptive_behavior_fallback = False
+        if (
+            adaptive_cost > logged_cost + 1e-12
+            or adaptive_adjusted_cost > logged_cost + 1e-12
+        ):
             adaptive = certified
             adaptive_cost, adaptive_penalty = certified_cost, 0.0
+            adaptive_adjusted_cost = adjusted_cost
+            adaptive_behavior_fallback = True
         switches = sum(adaptive[i] != adaptive[i - 1] for i in range(1, len(adaptive)))
         if switches > 1 or any(
             price_of(adaptive[i], pricing)[0] < price_of(adaptive[i - 1], pricing)[0]
@@ -1475,6 +1484,7 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
             "logged_micros": round(logged_cost * 1e6),
             "certified_micros": round(certified_cost * 1e6),
             "adaptive_micros": round(adaptive_cost * 1e6),
+            "adaptive_adjusted_micros": round(adaptive_adjusted_cost * 1e6),
             "adjusted_micros": round(adjusted_cost * 1e6),
             "baseline_micros": round(baseline_cost * 1e6),
         })
@@ -1500,12 +1510,17 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
             **common, "route": adaptive,
             "cost_logged_usd": round(logged_cost, 8),
             "cost_routed_usd": round(adaptive_cost, 8),
+            "behavior_adjusted_cost_usd": round(adaptive_adjusted_cost, 8),
             "switches": switches,
             "switch_penalty_usd": round(adaptive_penalty, 8),
             "estimate_kind": "conditional-on-logged-states",
         })
         for call, selected in zip(trajectory.calls, certified):
             reasons = proposal["adaptive_reasons"].get(call.index, proposal["initial_reasons"] if call.index == 0 else [])
+            if adaptive_behavior_fallback:
+                reasons = list(dict.fromkeys(
+                    reasons + ["behavior-adjusted-route-fallback"]
+                ))
             ledger.append({
                 "trajectory_id": trajectory.trajectory_id, "call_index": call.index,
                 "split": trajectory.split, "logged_model": trajectory.logged_model,
@@ -1593,11 +1608,18 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
     })
     validation_adaptive = [row for row in adaptive_records if row["split"] == "validation"]
     adaptive_validation_cost = sum(row["cost_routed_usd"] for row in validation_adaptive)
+    adaptive_validation_adjusted = sum(
+        row["behavior_adjusted_cost_usd"] for row in validation_adaptive
+    )
     adaptive_switches = sum(row["switches"] for row in validation_adaptive)
     comparison.append({
         "phase": "validation", "policy": "adaptive_conditional",
         "cost_usd_est": round(adaptive_validation_cost, 4),
+        "behavior_adjusted_cost_usd_est": round(adaptive_validation_adjusted, 4),
         "savings_pct": round((1.0 - adaptive_validation_cost / validation_logged_cost) * 100, 2),
+        "behavior_adjusted_savings_pct": round(
+            (1.0 - adaptive_validation_adjusted / validation_logged_cost) * 100, 2,
+        ),
         "coverage": round(sum(row["route"][0] != row["logged_model"] for row in validation_adaptive) / len(validation_adaptive), 4),
         "switches": adaptive_switches,
         "note": "conditional on logged states; no end-to-end failure estimate",
@@ -1685,6 +1707,9 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
         "corrected_baseline_cost_usd_est": round(totals["baseline_micros"] / 1e6, 4),
         "certified_cost_usd_est": round(totals["certified_micros"] / 1e6, 4),
         "adaptive_cost_usd_est": round(totals["adaptive_micros"] / 1e6, 4),
+        "behavior_adjusted_adaptive_cost_usd_est": round(
+            totals["adaptive_adjusted_micros"] / 1e6, 4,
+        ),
         "behavior_adjusted_certified_cost_usd_est": round(totals["adjusted_micros"] / 1e6, 4),
         "locked_policy": final_name,
         "locked_risk_cap": final_risk_cap,

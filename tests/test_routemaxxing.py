@@ -15,6 +15,7 @@ from routemaxxing import (
     Trajectory,
     choose_initial,
     choose_cost_effective_initial,
+    corrected_baseline,
     infer_family,
     make_routes,
     outcome_from_items,
@@ -165,6 +166,20 @@ class RoutemaxxingTest(unittest.TestCase):
         row["input"].insert(-1, {"type": "function_call_output", "output": "future error"})
         second = trajectory_from_row(row, 1)
         self.assertEqual(first.feature_values, second.feature_values)
+
+    def test_corrected_baseline_does_not_use_eventual_depth(self):
+        first = trajectory_from_row(complete_row("claude-opus-5"), 0)
+        second = trajectory_from_row(complete_row("claude-opus-5"), 1)
+        second.calls.extend([second.calls[-1]] * 100)
+        model = DummyModel({
+            "claude-sonnet-5": 0.1,
+            "claude-opus-5": 0.1,
+            "claude-fable-5": 0.1,
+        })
+        self.assertEqual(
+            corrected_baseline(first, model, load_pricing()),
+            corrected_baseline(second, model, load_pricing())[:len(first.calls)],
+        )
 
     def test_training_value_threshold_applies_to_proposal_scores(self):
         trajectories = [trajectory_from_row(complete_row(), i) for i in range(4)]
