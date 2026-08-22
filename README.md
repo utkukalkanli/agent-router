@@ -26,6 +26,24 @@ python scripts/plot_frontier.py results/routes.jsonl
 
 Python 3.10+, standard library only (matplotlib optional for the PNG).
 
+## Routemaxxing
+
+The challenge implementation corrects the unit of analysis before routing: the real
+chunk's 1,000 unique rows unfold into 10,845 model turns. It trains an interpretable,
+family-preserving downgrade policy and reports a public-validation frontier with a
+2-percentage-point proxy-quality constraint:
+
+```bash
+python scripts/routemaxxing.py export/
+```
+
+The command writes the certified and one-escalation route ledgers, frontier CSV/SVG,
+and a fully traceable summary under `results/routemaxxing/`. It also writes
+`results/routemaxxing.jsonl` for the local explorer and refreshes
+`presentation-routemaxxing.html`. All token and dollar figures are estimates; final
+outputs are excluded in the briefing-compatible primary analysis, and adaptive quality
+is explicitly conditional on the logged context.
+
 ## Using a coding agent
 
 Point Claude Code / Codex / Cursor / opencode at this repo — `AGENTS.md` briefs your agent.
