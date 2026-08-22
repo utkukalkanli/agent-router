@@ -1,6 +1,7 @@
 import { Overview as OverviewData, useApi } from "../api";
-import { BarRow, ColumnChart, Note, Panel, Stat, StackedBar } from "../charts";
+import { BarRow, ColumnChart, Note, NumTh, Panel, Stat, StackedBar, Th } from "../charts";
 import { count, modelColor, pct, signedPct, tokens, usd } from "../format";
+import { SOURCE_HELP } from "../glossary";
 
 export function Overview(props: { onPickModel: (model: string) => void }) {
   const { data, error, loading } = useApi<OverviewData>("/api/overview");
@@ -168,7 +169,15 @@ export function Overview(props: { onPickModel: (model: string) => void }) {
 
       <Panel title="What this page reads" help="Nothing else. No network, no telemetry, no other files.">
         <table className="grid">
-          <thead><tr><th>kind</th><th>file</th><th className="num">lines</th><th className="num">parse errors</th><th className="num">size</th></tr></thead>
+          <thead>
+            <tr>
+              <Th help={SOURCE_HELP.kind}>kind</Th>
+              <Th help={SOURCE_HELP.file}>file</Th>
+              <NumTh help={SOURCE_HELP.lines}>lines</NumTh>
+              <NumTh help={SOURCE_HELP.parseErrors}>parse errors</NumTh>
+              <NumTh help={SOURCE_HELP.size}>size</NumTh>
+            </tr>
+          </thead>
           <tbody>
             {data.sources.map((source) => (
               <tr key={`${source.kind}:${source.path}`}>

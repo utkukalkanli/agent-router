@@ -116,3 +116,25 @@ export function Panel(props: { title: string; help?: ReactNode; right?: ReactNod
     </section>
   );
 }
+
+/** A table header that explains itself. Almost nothing in these tables is a number
+ *  the export logged — most are reconstructed or estimated — so every column gets a
+ *  hover/focus note saying what it is and where it can be wrong. */
+export function Th(props: { children: ReactNode; help: string; className?: string; align?: "right" }) {
+  const className = [props.className, props.align === "right" ? "tip-right" : null]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <th className={className || undefined}>
+      <span className="th-help" tabIndex={0}>
+        {props.children}
+        <span className="th-tip" role="tooltip">{props.help}</span>
+      </span>
+    </th>
+  );
+}
+
+/** The same, for the numeric columns: right-aligned, so the note hangs right. */
+export function NumTh(props: { children: ReactNode; help: string }) {
+  return <Th className="num" align="right" help={props.help}>{props.children}</Th>;
+}

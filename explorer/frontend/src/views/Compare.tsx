@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { CompareResult, Matched, useApi } from "../api";
-import { BarRow, Note, Panel, Stat } from "../charts";
+import { BarRow, Note, NumTh, Panel, Stat, Th } from "../charts";
 import { count, modelColor, pct, signedPct, signedUsd, tokens, usd } from "../format";
+import { COHORT_HELP } from "../glossary";
 
 export function Compare(props: {
   left: string | null; right: string | null;
@@ -226,9 +227,13 @@ function Cohorts() {
       <table className="grid">
         <thead>
           <tr>
-            <th>cohort</th><th className="num">runs</th><th className="num">models</th>
-            <th className="num">actual</th><th>cheapest observed</th>
-            <th className="num">headroom</th><th className="num">size spread</th>
+            <Th help={COHORT_HELP.cohort}>cohort</Th>
+            <NumTh help={COHORT_HELP.runs}>runs</NumTh>
+            <NumTh help={COHORT_HELP.models}>models</NumTh>
+            <NumTh help={COHORT_HELP.actual}>actual</NumTh>
+            <Th help={COHORT_HELP.cheapest}>cheapest observed</Th>
+            <NumTh help={COHORT_HELP.headroom}>headroom</NumTh>
+            <NumTh help={COHORT_HELP.sizeSpread}>size spread</NumTh>
           </tr>
         </thead>
         <tbody>

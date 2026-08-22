@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Json, useApi } from "../api";
-import { Note, Panel } from "../charts";
+import { Note, NumTh, Panel, Th } from "../charts";
 import { count, modelColor, pct, tokens, usd } from "../format";
+import { FUNCTION_HELP, FUNCTION_MODEL_HELP } from "../glossary";
 
 /** Cost per call is tiny; milli-dollars keep the column readable. */
 function milli(value: unknown): string {
@@ -37,10 +38,15 @@ export function Functions(props: { onOpenTrajectory: (id: string) => void }) {
         <table className="grid rows">
           <thead>
             <tr>
-              <th>function</th><th className="num">calls</th><th className="num">models</th>
-              <th className="num">args</th><th className="num">result</th>
-              <th className="num">errors</th><th className="num">$/call</th>
-              <th className="num">spend</th><th className="num">spread</th>
+              <Th help={FUNCTION_HELP.function}>function</Th>
+              <NumTh help={FUNCTION_HELP.calls}>calls</NumTh>
+              <NumTh help={FUNCTION_HELP.models}>models</NumTh>
+              <NumTh help={FUNCTION_HELP.args}>args</NumTh>
+              <NumTh help={FUNCTION_HELP.result}>result</NumTh>
+              <NumTh help={FUNCTION_HELP.errors}>errors</NumTh>
+              <NumTh help={FUNCTION_HELP.costPerCall}>$/call</NumTh>
+              <NumTh help={FUNCTION_HELP.spend}>spend</NumTh>
+              <NumTh help={FUNCTION_HELP.spread}>spread</NumTh>
             </tr>
           </thead>
           <tbody>
@@ -184,11 +190,17 @@ function ModelTable(props: { rows: Json[] }) {
     <table className="grid">
       <thead>
         <tr>
-          <th>model</th><th className="num">calls</th><th className="num">runs</th>
-          <th className="num">args (med)</th><th className="num">result (med)</th>
-          <th className="num">errors</th><th className="num">$/call</th>
-          <th className="num">observed ×</th><th className="num">list price ×</th>
-          <th className="num">behaviour ×</th><th className="num">spend</th>
+          <Th help={FUNCTION_MODEL_HELP.model}>model</Th>
+          <NumTh help={FUNCTION_MODEL_HELP.calls}>calls</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.runs}>runs</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.args}>args (med)</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.result}>result (med)</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.errors}>errors</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.costPerCall}>$/call</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.observed}>observed ×</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.listPrice}>list price ×</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.behaviour}>behaviour ×</NumTh>
+          <NumTh help={FUNCTION_MODEL_HELP.spend}>spend</NumTh>
         </tr>
       </thead>
       <tbody>

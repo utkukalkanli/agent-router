@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { TrajectoryList, useApi } from "../api";
-import { Note } from "../charts";
+import { Note, NumTh, Th } from "../charts";
 import { count, modelColor, pct, tokens, usd } from "../format";
+import { TRAJECTORY_HELP } from "../glossary";
 import { Flow } from "./Flow";
 
 export type Filters = Record<string, string | undefined>;
@@ -149,9 +150,15 @@ export function Trajectories(props: {
       <table className="grid rows">
         <thead>
           <tr>
-            <th>trajectory</th><th>model</th><th className="num">calls</th>
-            <th className="num">input</th><th className="num">output</th>
-            <th className="num">cache</th><th>class</th><th className="num">cost</th><th />
+            <Th help={TRAJECTORY_HELP.trajectory}>trajectory</Th>
+            <Th help={TRAJECTORY_HELP.model}>model</Th>
+            <NumTh help={TRAJECTORY_HELP.calls}>calls</NumTh>
+            <NumTh help={TRAJECTORY_HELP.input}>input</NumTh>
+            <NumTh help={TRAJECTORY_HELP.output}>output</NumTh>
+            <NumTh help={TRAJECTORY_HELP.cache}>cache</NumTh>
+            <Th help={TRAJECTORY_HELP.class}>class</Th>
+            <NumTh help={TRAJECTORY_HELP.cost}>cost</NumTh>
+            <th />
           </tr>
         </thead>
         <tbody>

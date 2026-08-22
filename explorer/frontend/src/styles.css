@@ -472,3 +472,33 @@ button.linkish {
 .sample-meta strong { color: var(--fg-dim); font-family: var(--mono); }
 .sample .raw { max-height: 220px; margin: 0; }
 .grid td.muted-cell { color: var(--muted); }
+
+/* ---------- column tooltips ---------- */
+
+/* The tables are dense and most columns are derived, not logged. Every header
+   carries its definition on hover or keyboard focus. */
+.grid th:has(.th-help) { padding: 0; }
+.th-help {
+  position: relative; display: inline-block; padding: 6px 9px; cursor: help;
+  outline: none; text-decoration: underline dotted var(--muted);
+  text-underline-offset: 3px;
+}
+.th-help:hover, .th-help:focus-visible {
+  color: var(--fg-dim); text-decoration-color: var(--accent);
+}
+.th-tip {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  width: max-content; max-width: 320px; padding: 8px 10px;
+  background: var(--bg-raised); color: var(--fg-dim);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  font: 400 11.5px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-transform: none; letter-spacing: 0; text-align: left;
+  white-space: normal; opacity: 0; visibility: hidden;
+  transition: opacity 90ms ease-out; pointer-events: none;
+}
+.grid th.tip-right .th-tip { left: auto; right: 0; }
+.th-help:hover .th-tip, .th-help:focus-visible .th-tip { opacity: 1; visibility: visible; }
+/* Lift the hovered header above the rows below it — otherwise the first data row
+   paints over the note. */
+.grid th:has(.th-help:hover), .grid th:has(.th-help:focus-visible) { position: relative; z-index: 40; }

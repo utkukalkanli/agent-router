@@ -37,6 +37,11 @@ needed to run the explorer. Dataset rows are never included in that bundle.
 
 ## Reading the numbers
 
+Every table header carries its own definition: hover (or tab to) a column name for a
+note saying what the number is and where it can be wrong. The Raw calls tab reads its
+columns off the DuckDB schema, so its notes ride on the native tooltip. All of that
+text lives in one place, `explorer/frontend/src/glossary.ts`.
+
 Every token count is an **estimate** — serialized JSON chars / 4. The export ships no
 `usage` field, so nothing here is measured. Outputs are recovered from the next call's
 input, which leaves the final turn of every trajectory unobservable. Costs are

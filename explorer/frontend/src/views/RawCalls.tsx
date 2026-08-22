@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { columnHelp } from "../glossary";
 
 type CallRow = Record<string, unknown> & { call_id: string };
 type ColumnInfo = { name: string; type: string; nullable: boolean };
@@ -41,6 +42,15 @@ const UI_DEFAULTS = new Set([
 
 function label(name: string) {
   return name.replaceAll("_", " ");
+}
+
+/** The column list is read straight off the DuckDB schema, so the header text is a
+ *  bare column name. The glossary supplies the meaning; the header is inside a
+ *  clipped, virtualised scroll container, so this rides on the native title. */
+function headerTitle(name: string) {
+  const help = columnHelp(name);
+  const hint = "Click to sort · drag to reorder · drag the right edge to resize";
+  return help ? `${label(name)} — ${help}\n\n${hint}` : hint;
 }
 
 function formatValue(value: unknown, column: string) {
@@ -228,7 +238,7 @@ export function RawCalls() {
             <input value={columnQuery} onChange={(event) => setColumnQuery(event.target.value)} placeholder="Find column" />
             <div className="column-options">
               {filteredColumnOptions.map((column) => (
-                <label key={column.name}>
+                <label key={column.name} title={columnHelp(column.name) ?? column.name}>
                   <input
                     type="checkbox"
                     checked={columnVisibility[column.name] !== false}
@@ -260,7 +270,7 @@ export function RawCalls() {
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={() => reorderColumn(header.column.id)}
                 onClick={header.column.getToggleSortingHandler()}
-                title="Click to sort; drag to reorder"
+                title={headerTitle(header.column.id)}
               >
                 <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
                 <i>{header.column.getIsSorted() === "asc" ? "▲" : header.column.getIsSorted() === "desc" ? "▼" : ""}</i>
@@ -304,7 +314,10 @@ export function RawCalls() {
           </div>
           <dl>
             {Object.entries(selected).map(([key, value]) => (
-              <div key={key}><dt>{label(key)}</dt><dd>{formatValue(value, key)}</dd></div>
+              <div key={key}>
+                <dt title={columnHelp(key) ?? key}>{label(key)}</dt>
+                <dd>{formatValue(value, key)}</dd>
+              </div>
             ))}
           </dl>
           <p className="drawer-note">Raw source and delta views arrive in their dedicated checkpoints.</p>

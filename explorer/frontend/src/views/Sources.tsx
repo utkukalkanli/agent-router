@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Json, useApi } from "../api";
-import { Note, Panel } from "../charts";
+import { Note, NumTh, Panel, Th } from "../charts";
 import { count, modelColor, tokens, usd } from "../format";
+import { EXPORT_ROW_HELP, RESULT_ROW_HELP } from "../glossary";
 
 /** The files on disk, and what each line of them actually became. */
 export function Sources(props: { onOpenTrajectory: (id: string) => void }) {
@@ -102,16 +103,24 @@ function RowBrowser(props: { path: string; onOpenTrajectory: (id: string) => voi
         <thead>
           {isExport ? (
             <tr>
-              <th className="num">line</th><th>trajectory</th><th>model</th>
-              <th className="num">items</th><th className="num">calls</th>
-              <th className="num">input</th><th className="num">output</th>
-              <th className="num">raw size</th><th className="num">cost</th>
+              <NumTh help={EXPORT_ROW_HELP.line}>line</NumTh>
+              <Th help={EXPORT_ROW_HELP.trajectory}>trajectory</Th>
+              <Th help={EXPORT_ROW_HELP.model}>model</Th>
+              <NumTh help={EXPORT_ROW_HELP.items}>items</NumTh>
+              <NumTh help={EXPORT_ROW_HELP.calls}>calls</NumTh>
+              <NumTh help={EXPORT_ROW_HELP.input}>input</NumTh>
+              <NumTh help={EXPORT_ROW_HELP.output}>output</NumTh>
+              <NumTh help={EXPORT_ROW_HELP.rawSize}>raw size</NumTh>
+              <NumTh help={EXPORT_ROW_HELP.cost}>cost</NumTh>
             </tr>
           ) : (
             <tr>
-              <th className="num">line</th><th>trajectory id in this file</th>
-              <th>logged model</th><th className="num">route length</th>
-              <th>joins to export?</th><th className="num">raw size</th>
+              <NumTh help={RESULT_ROW_HELP.line}>line</NumTh>
+              <Th help={RESULT_ROW_HELP.trajectoryId}>trajectory id in this file</Th>
+              <Th help={RESULT_ROW_HELP.loggedModel}>logged model</Th>
+              <NumTh help={RESULT_ROW_HELP.routeLength}>route length</NumTh>
+              <Th help={RESULT_ROW_HELP.joins}>joins to export?</Th>
+              <NumTh help={RESULT_ROW_HELP.rawSize}>raw size</NumTh>
             </tr>
           )}
         </thead>
