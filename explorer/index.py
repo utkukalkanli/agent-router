@@ -30,7 +30,7 @@ from load_trajectories import est_tokens, first_user_text, group_key  # noqa: E4
 
 
 DB_PATH = Path(__file__).with_name("index.duckdb")
-INDEX_VERSION = "4"
+INDEX_VERSION = "6"
 Progress = Optional[Callable[[str], None]]
 ERROR_RE = re.compile(
     r"(?:\berror\b|\bfailed\b|\bfailure\b|\bexception\b|traceback|"
@@ -70,7 +70,8 @@ CALL_COLUMNS = [
     "cost_usd", "switch_penalty_usd", "split", "source_kind", "source_path",
     "source_line", "raw_id", "delta_raw_id", "delta_start_item",
     "delta_stop_item", "output_raw_id", "output_start_item", "output_stop_item",
-    "ledger_raw_id", "logged_input_cost_usd",
+    "ledger_raw_id", "logged_input_cost_usd", "tools_tokens",
+    "est_output_tokens", "logged_output_cost_usd", "logged_total_cost_usd",
 ]
 
 
@@ -227,7 +228,11 @@ def _create_schema(con: Any) -> None:
         output_start_item INTEGER,
         output_stop_item INTEGER,
         ledger_raw_id BIGINT,
-        logged_input_cost_usd DOUBLE)""")
+        logged_input_cost_usd DOUBLE,
+        tools_tokens BIGINT,
+        est_output_tokens BIGINT,
+        logged_output_cost_usd DOUBLE,
+        logged_total_cost_usd DOUBLE)""")
 
 
 def _opening_signature(row: Dict[str, Any]) -> str:
@@ -348,10 +353,12 @@ def _raw_item_tuple(raw_id: int, item_index: int, item: Any) -> Tuple[Any, ...]:
     item = item if isinstance(item, dict) else {"value": item}
     item_type = item.get("type")
     search_field = search_text = None
-    if item_type in ("function_call", "custom_tool_call") and "arguments" in item:
-        search_field = "tool_arguments"
-        value = item.get("arguments")
-        search_text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    if item_type in ("function_call", "custom_tool_call"):
+        # function_call carries `arguments`; custom_tool_call (apply_patch) carries `input`.
+        value = item.get("arguments", item.get("input"))
+        if value is not None:
+            search_field = "tool_arguments"
+            search_text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     elif item_type in ("function_call_output", "custom_tool_call_output"):
         search_field = "tool_outputs"
         value = item.get("output", item.get("content"))
@@ -623,10 +630,17 @@ def _base_call(
     shared = _shared_tokens(previous_input or [], input_items) if previous_input is not None else 0
     last_result = _last_tool_result(input_items)
     output_kind, output_count, output_names, output_prose = _output_metadata(output_items)
-    pu, pc, _ = price_of(model, pricing)
-    logged_cost = (
-        max(input_tokens - shared, 0) * pu + min(shared, input_tokens) * pc
-    ) / 1e6
+    pu, pc, po = price_of(model, pricing)
+    # Tool schemas are resent on every request, so they are billed input. They sit
+    # in the cached prefix from the second call onward, exactly like the prompt items.
+    tools_tokens = est_tokens(row.get("tools") or [])
+    billed_input = input_tokens + tools_tokens
+    cached = min(shared + tools_tokens, billed_input) if previous_input is not None else 0
+    logged_cost = ((billed_input - cached) * pu + cached * pc) / 1e6
+    # The export has no `usage`, but call k's output is recoverable: it is sitting in
+    # call k+1's input. Only the final call's output is truly gone (None here).
+    output_tokens = est_tokens(list(output_items)) if output_items is not None else None
+    output_cost = (output_tokens * po / 1e6) if output_tokens is not None else None
     return {
         "call_id": "%s:%d" % (trajectory_id, call_index),
         "trajectory_id": trajectory_id, "call_index": call_index,
@@ -664,6 +678,9 @@ def _base_call(
         "output_start_item": output_location[1] if output_location else None,
         "output_stop_item": output_location[2] if output_location else None,
         "ledger_raw_id": None, "logged_input_cost_usd": logged_cost,
+        "tools_tokens": tools_tokens, "est_output_tokens": output_tokens,
+        "logged_output_cost_usd": output_cost,
+        "logged_total_cost_usd": logged_cost + (output_cost or 0.0),
     }
 
 
@@ -895,11 +912,12 @@ def _consolidate_results(con: Any, pricing: Dict[str, Sequence[float]]) -> None:
     rank_by_price = {price: index + 1 for index, price in enumerate(dense_prices)}
     prices = []
     for (model,) in models:
-        pu, pc, _ = price_of(model, pricing)
-        prices.append((model, pu, pc, rank_by_price[pu]))
-    con.execute("CREATE TABLE model_prices(model VARCHAR PRIMARY KEY, uncached DOUBLE, cached DOUBLE, tier_rank INTEGER)")
+        pu, pc, po = price_of(model, pricing)
+        prices.append((model, pu, pc, po, rank_by_price[pu]))
+    con.execute("CREATE TABLE model_prices(model VARCHAR PRIMARY KEY, uncached DOUBLE, "
+                "cached DOUBLE, output DOUBLE, tier_rank INTEGER)")
     if prices:
-        con.executemany("INSERT INTO model_prices VALUES (?, ?, ?, ?)", prices)
+        con.executemany("INSERT INTO model_prices VALUES (?, ?, ?, ?, ?)", prices)
     con.execute("""UPDATE calls AS c SET tier_rank = p.tier_rank
         FROM model_prices p WHERE c.model = p.model""")
     con.execute("""UPDATE calls AS c SET
@@ -915,24 +933,25 @@ def _consolidate_results(con: Any, pricing: Dict[str, Sequence[float]]) -> None:
           coalesce(c.chosen_model, c.model) AS selected_model,
           lag(coalesce(c.chosen_model, c.model)) OVER (
             PARTITION BY c.trajectory_id ORDER BY c.call_index) AS previous_model,
-          c.est_input_tokens, c.shared_prefix_tokens, p.uncached, p.cached
+          c.est_input_tokens + coalesce(c.tools_tokens, 0) AS billed_input,
+          coalesce(c.shared_prefix_tokens, 0) + coalesce(c.tools_tokens, 0) AS cacheable,
+          c.est_output_tokens, p.uncached, p.cached, p.output
         FROM calls c LEFT JOIN model_prices p
           ON p.model = coalesce(c.chosen_model, c.model)""")
     con.execute("""UPDATE calls AS c SET
           switch_penalty_usd = coalesce(c.switch_penalty_usd,
             CASE WHEN r.routed AND r.previous_model IS NOT NULL
                        AND r.previous_model <> r.selected_model
-                 THEN coalesce(r.shared_prefix_tokens, 0) *
-                      (r.uncached - r.cached) / 1000000.0
+                 THEN r.cacheable * (r.uncached - r.cached) / 1000000.0
                  WHEN r.routed THEN 0.0 ELSE NULL END),
           cost_usd = coalesce(c.cost_usd,
-            CASE WHEN r.routed AND r.est_input_tokens IS NOT NULL THEN
-              ((r.est_input_tokens - CASE WHEN r.previous_model = r.selected_model
-                 THEN least(coalesce(r.shared_prefix_tokens, 0), r.est_input_tokens)
-                 ELSE 0 END) * r.uncached
+            CASE WHEN r.routed AND r.billed_input IS NOT NULL THEN
+              ((r.billed_input - CASE WHEN r.previous_model = r.selected_model
+                 THEN least(r.cacheable, r.billed_input) ELSE 0 END) * r.uncached
                + CASE WHEN r.previous_model = r.selected_model
-                 THEN least(coalesce(r.shared_prefix_tokens, 0), r.est_input_tokens)
-                 ELSE 0 END * r.cached) / 1000000.0 ELSE NULL END)
+                 THEN least(r.cacheable, r.billed_input) ELSE 0 END * r.cached
+               + coalesce(r.est_output_tokens, 0) * r.output) / 1000000.0
+            ELSE NULL END)
         FROM route_costs r WHERE c.call_id = r.call_id""")
 
 
@@ -944,11 +963,20 @@ def _build_trajectories(con: Any) -> None:
           sum(est_input_tokens) AS total_est_input_tokens,
           sum(est_new_tokens) AS total_est_new_tokens,
           sum(shared_prefix_tokens) AS total_shared_prefix_tokens,
+          sum(est_output_tokens) AS total_est_output_tokens,
+          arg_min(tools_tokens, call_index) AS tools_tokens,
+          arg_min(tools_available, call_index) AS tools_available,
+          list(coalesce(output_kind, 'unobservable') ORDER BY call_index) AS output_kinds,
+          flatten(list(coalesce(output_tool_names, []::VARCHAR[]) ORDER BY call_index)) AS tool_calls,
+          count(*) FILTER (WHERE tool_output_error) AS n_error_calls,
           string_agg(item_type_sequence, '|' ORDER BY call_index)
             FILTER (WHERE item_type_sequence IS NOT NULL) AS item_type_sequence,
           bool_or(tool_output_error) AS has_error,
           bool_or(repeat_tool) AS has_repeat_tool,
           sum(logged_input_cost_usd) AS logged_cost_usd,
+          sum(logged_output_cost_usd) AS logged_output_cost_usd,
+          sum(logged_total_cost_usd) AS logged_total_cost_usd,
+          arg_min(logged_total_cost_usd, call_index) AS cold_start_cost_usd,
           CASE WHEN count(cost_usd) > 0 THEN sum(cost_usd) ELSE NULL END AS routed_cost_usd,
           arg_min(o.opening_user, call_index) AS opening_user,
           arg_min(o.system_prompt, call_index) AS system_prompt,
@@ -962,6 +990,7 @@ def _build_trajectories(con: Any) -> None:
             SELECT r.trajectory_id, arg_max(r.model, r.raw_id),
               arg_max(r.model_family, r.raw_id), arg_max(r.n_calls, r.raw_id),
               NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+              NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
               'results', arg_max(x.source_path, r.raw_id), arg_max(x.source_line, r.raw_id)
             FROM result_trajectories r JOIN raw_lines x ON x.raw_id = r.raw_id
             LEFT JOIN trajectories t USING(trajectory_id)
@@ -971,6 +1000,283 @@ def _build_trajectories(con: Any) -> None:
     con.execute("CREATE INDEX calls_output_kind_idx ON calls(output_kind)")
     con.execute("CREATE INDEX trajectories_id_idx ON trajectories(trajectory_id)")
     con.execute("ANALYZE")
+
+
+# --- Trajectory classification -------------------------------------------------
+# The export ships no labels, but the opening user message is not anonymous: Viktor
+# packs a `# === Thread info ===` block and a cron memory header into it. Between
+# them they yield the trigger, the cron identity and a wall-clock timestamp. See
+# scripts/trajectory_ids.py for the verification and the redaction caveat below.
+PATH_RE = re.compile(r"^\s*-\s*Path:\s*`([^`]+)`", re.M)
+TRIGGER_RE = re.compile(r"^\s*-\s*Triggered by:\s*`([^`]+)`", re.M)
+DATETIME_RE = re.compile(r"^\s*-\s*Current datetime:\s*`([^`]+)`", re.M)
+CRON_PATH_RE = re.compile(r"^\s*-\s*Cron path:\s*`([^`]+)`", re.M)
+PII_RE = re.compile(r"PII_[A-Z_]+_\d+")
+
+# Tool calls grouped by what the model was actually doing with the turn.
+TOOL_WORK = {
+    "bash": "exec", "shell_command": "exec", "run_shell": "exec",
+    "apply_patch": "edit", "file_edit": "edit", "file_write": "edit",
+    "file_read": "read", "view_image": "read", "memory_search": "read",
+    "coworker_channel_history": "read", "coworker_download_from_slack": "read",
+    "coworker_download_from_channel": "read", "coworker_get_channel_reactions": "read",
+    "coworker_list_msteams_channels": "read", "coworker_list_msteams_users": "read",
+    "coworker_send_slack_message": "message", "coworker_send_msteams_message": "message",
+    "send_message_to_thread": "message", "coworker_slack_react": "message",
+    "coworker_msteams_react": "message", "coworker_upload_to_slack": "message",
+    "coworker_upload_to_channel": "message", "coworker_delete_channel_message": "message",
+    "coworker_display_ui_elements": "message", "submit_draft": "message",
+    "submit_subagent_result": "message",
+    "wait_for_background_work": "wait",
+}
+SIZE_BANDS = ((10_000, "XS"), (50_000, "S"), (200_000, "M"), (1_000_000, "L"))
+DEPTH_BANDS = ((1, "single"), (4, "short"), (9, "medium"), (24, "long"))
+OUTPUT_KIND_GLYPH = {
+    "tool_call": "T", "multi_tool": "M", "patch": "P",
+    "text": "S", "unobservable": "X", "unknown": "?",
+}
+
+
+def _band(value: Optional[int], bands: Sequence[Tuple[int, str]], top: str) -> str:
+    if value is None:
+        return "unknown"
+    for limit, name in bands:
+        if value <= limit:
+            return name
+    return top
+
+
+def _cron_family(cron_path: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Leading segment of the cron path, plus whether redaction destroyed it.
+
+    Placeholders are only consistent *within* a trajectory, so a family that is
+    itself a `PII_*` token is not a real group — it silently merges unrelated
+    crons. Flag it rather than trust it.
+    """
+    if not cron_path:
+        return None, False
+    parts = [part for part in cron_path.strip("/").split("/") if part]
+    if parts and parts[0] == "crons":
+        parts = parts[1:]
+    if not parts:
+        return None, False
+    family = parts[0]
+    return family, bool(PII_RE.fullmatch(family))
+
+
+def _shape_signature(output_kinds: Sequence[str]) -> str:
+    """Run-length-compressed turn shape, e.g. `3T·M·2T·X`. Two trajectories with
+    the same signature took structurally the same path through the agent loop."""
+    parts, run, previous = [], 0, None
+    for kind in list(output_kinds) + [None]:
+        glyph = OUTPUT_KIND_GLYPH.get(kind or "", "?") if kind is not None else None
+        if glyph == previous:
+            run += 1
+            continue
+        if previous is not None:
+            parts.append(previous if run == 1 else "%d%s" % (run, previous))
+        previous, run = glyph, 1
+    return "·".join(parts)
+
+
+def _classify_trajectories(con: Any) -> None:
+    con.execute("""CREATE TABLE trajectory_meta(
+        trajectory_id VARCHAR PRIMARY KEY, trigger_kind VARCHAR,
+        cron_path VARCHAR, cron_family VARCHAR, cron_family_collapsed BOOLEAN,
+        thread_path VARCHAR, started_at VARCHAR, harness VARCHAR, surface VARCHAR,
+        toolset_id VARCHAR, toolset_label VARCHAR, workload VARCHAR,
+        size_band VARCHAR, depth_band VARCHAR, shape_signature VARCHAR,
+        tool_signature VARCHAR, n_tool_calls INTEGER, work_mix VARCHAR,
+        billed_input_tokens BIGINT, cache_hit_rate DOUBLE)""")
+    rows = con.execute("""SELECT trajectory_id, opening_user, tools_available,
+          output_kinds, tool_calls, n_calls, total_est_input_tokens,
+          tools_tokens, total_shared_prefix_tokens
+        FROM trajectories""").fetchall()
+    toolset_labels: Dict[str, str] = {}
+    records = []
+    for (traj, opening, tools, kinds, tool_calls, n_calls, input_tokens,
+         tools_tokens, shared) in rows:
+        opening = opening or ""
+        tools = list(tools or [])
+        tool_calls = [name for name in (tool_calls or []) if name]
+        cron_path = _first_group(CRON_PATH_RE, opening)
+        family, collapsed = _cron_family(cron_path)
+        trigger = _first_group(TRIGGER_RE, opening)
+        if trigger in (None, ""):
+            trigger_kind = "unknown"
+        elif trigger in ("cron", "trigger"):
+            trigger_kind = trigger
+        else:
+            trigger_kind = "user"
+        harness = "shell+patch" if "shell_command" in tools else (
+            "bash+file" if "bash" in tools else "other")
+        surface = "msteams" if any(t.startswith("coworker_") and "msteams" in t for t in tools) else (
+            "slack" if any(t.startswith("coworker_") and "slack" in t for t in tools) else "none")
+        toolset_id = hashlib.sha1(",".join(sorted(tools)).encode()).hexdigest()[:8]
+        toolset_labels.setdefault(toolset_id, "%s / %s / %d tools" % (harness, surface, len(tools)))
+        work = [TOOL_WORK.get(name, "other") for name in tool_calls]
+        counts: Dict[str, int] = {}
+        for kind in work:
+            counts[kind] = counts.get(kind, 0) + 1
+        workload = max(counts, key=lambda k: (counts[k], k)) if counts else "none"
+        billed_input = (input_tokens or 0) + (tools_tokens or 0) * (n_calls or 1)
+        cacheable = (shared or 0) + (tools_tokens or 0) * max((n_calls or 1) - 1, 0)
+        records.append((
+            traj, trigger_kind, cron_path, family, collapsed,
+            _first_group(PATH_RE, opening), _first_group(DATETIME_RE, opening),
+            harness, surface, toolset_id, toolset_labels[toolset_id], workload,
+            _band(billed_input, SIZE_BANDS, "XL"), _band(n_calls, DEPTH_BANDS, "deep"),
+            _shape_signature(kinds or []),
+            ",".join(_ordered_unique(tool_calls)), len(tool_calls),
+            ",".join("%s:%d" % (k, counts[k]) for k in sorted(counts, key=lambda k: -counts[k])),
+            billed_input, (cacheable / billed_input) if billed_input else None,
+        ))
+    if records:
+        con.executemany(
+            "INSERT INTO trajectory_meta VALUES (%s)" % ", ".join("?" * 20), records,
+        )
+    con.execute("CREATE INDEX trajectory_meta_idx ON trajectory_meta(trajectory_id)")
+
+
+def _first_group(pattern: "re.Pattern[str]", text: str) -> Optional[str]:
+    match = pattern.search(text)
+    return match.group(1).strip() if match else None
+
+
+# Argument keys that carry the command for the shell-ish tools. The leading verb of
+# that command is the closest thing the export has to "what was this call for".
+COMMAND_KEYS = ("command", "cmd", "script", "shell_command")
+# Wrappers that prefix a real command; skip past them to find the verb that matters.
+# `cd /work && cat x` must report `cat`, not `work`: these consume a path argument.
+PATH_TAKING = {"cd", "source", ".", "pushd"}
+COMMAND_NOISE = {
+    "sudo", "env", "time", "nohup", "exec", "then", "do", "else",
+    "&&", "||", ";", "(", "{", "\\",
+}
+
+
+def _command_verb(argument_text: Optional[str]) -> Optional[str]:
+    """Leading executable of a shell command, looking past `cd x &&` style prefixes.
+
+    A heuristic, and it says so: a pipeline is reduced to its first stage, and a
+    heredoc to the command that opens it. Good enough to cluster 5k bash calls into
+    something a human can read; not a parser.
+    """
+    if not argument_text:
+        return None
+    try:
+        payload = json.loads(argument_text)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    command = None
+    if isinstance(payload, dict):
+        for key in COMMAND_KEYS:
+            if isinstance(payload.get(key), str):
+                command = payload[key]
+                break
+    elif isinstance(payload, str):
+        command = payload
+    if command is None:
+        return None
+    skip_next = False
+    for token in re.split(r"[\s|;]+", command.strip()):
+        token = token.strip("()&")
+        if not token:
+            continue
+        if skip_next:            # the path argument of cd/source, not a command
+            skip_next = False
+            continue
+        if token in PATH_TAKING:
+            skip_next = True
+            continue
+        if token in COMMAND_NOISE or "=" in token or token.startswith("-"):
+            continue
+        return token.rsplit("/", 1)[-1][:40]
+    return None
+
+
+def _argument_shape(argument_text: Optional[str]) -> Optional[str]:
+    """Sorted top-level argument keys — the call's signature, ignoring its values."""
+    if not argument_text:
+        return None
+    try:
+        payload = json.loads(argument_text)
+    except (json.JSONDecodeError, TypeError):
+        return "(unparsed)"
+    if isinstance(payload, dict):
+        return ",".join(sorted(payload)) or "(empty)"
+    return "(%s)" % type(payload).__name__
+
+
+def _build_function_calls(con: Any, progress: Progress) -> None:
+    """One row per function call a model actually emitted, with its result and cost.
+
+    Every tool call sits inside some request's recovered output span, so it can be
+    attributed to the model that produced it and to that request's price. A request
+    that emits several calls at once has one cost; `cost_share_usd` splits it evenly
+    across them, which is an attribution choice, not a measurement.
+    """
+    con.execute("""CREATE TABLE function_calls AS
+        WITH ranked AS (
+          SELECT raw_id, item_index, item_tokens, search_field, search_text, tool_name,
+                 is_model_authored AND tool_name IS NOT NULL AS is_call,
+                 count(*) FILTER (WHERE is_model_authored AND tool_name IS NOT NULL)
+                   OVER (PARTITION BY raw_id ORDER BY item_index
+                         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS call_rank
+          FROM raw_items
+        ),
+        calls_only AS (
+          SELECT raw_id, item_index, call_rank, tool_name AS tool,
+                 item_tokens AS arg_tokens, search_text AS arg_text
+          FROM ranked WHERE is_call
+        ),
+        results_only AS (
+          SELECT raw_id, call_rank,
+                 arg_min(item_tokens, item_index) AS result_tokens,
+                 arg_min(search_text, item_index) AS result_text
+          FROM ranked
+          WHERE NOT is_call AND search_field = 'tool_outputs' AND call_rank > 0
+          GROUP BY raw_id, call_rank
+        )
+        SELECT
+          c.raw_id || ':' || c.item_index AS fc_id,
+          o.call_id, o.trajectory_id, o.call_index, o.model, o.model_family,
+          o.n_calls_in_trajectory, c.tool, c.arg_tokens, c.arg_text,
+          r.result_tokens, r.result_text,
+          coalesce(o.output_n_tool_calls, 1) AS n_calls_in_request,
+          o.logged_total_cost_usd AS request_cost_usd,
+          o.logged_total_cost_usd / greatest(coalesce(o.output_n_tool_calls, 1), 1)
+            AS cost_share_usd,
+          o.est_input_tokens + coalesce(o.tools_tokens, 0) AS request_input_tokens,
+          o.est_output_tokens AS request_output_tokens,
+          c.raw_id, c.item_index
+        FROM calls_only c
+        JOIN calls o
+          ON o.output_raw_id = c.raw_id
+         AND c.item_index >= o.output_start_item
+         AND c.item_index <  o.output_stop_item
+        LEFT JOIN results_only r
+          ON r.raw_id = c.raw_id AND r.call_rank = c.call_rank""")
+    con.execute("ALTER TABLE function_calls ADD COLUMN command_verb VARCHAR")
+    con.execute("ALTER TABLE function_calls ADD COLUMN arg_shape VARCHAR")
+    con.execute("ALTER TABLE function_calls ADD COLUMN result_error BOOLEAN")
+    rows = con.execute(
+        "SELECT fc_id, arg_text, result_text FROM function_calls").fetchall()
+    updates = [
+        (
+            _command_verb(arg_text), _argument_shape(arg_text),
+            bool(result_text and ERROR_RE.search(result_text)), fc_id,
+        )
+        for fc_id, arg_text, result_text in rows
+    ]
+    if updates:
+        con.executemany(
+            "UPDATE function_calls SET command_verb = ?, arg_shape = ?, "
+            "result_error = ? WHERE fc_id = ?", updates,
+        )
+    con.execute("CREATE INDEX function_calls_tool_idx ON function_calls(tool)")
+    con.execute("CREATE INDEX function_calls_model_idx ON function_calls(model)")
+    _emit(progress, "Grouped {:,d} function calls".format(len(rows)))
 
 
 def _rebuild(
@@ -996,6 +1302,8 @@ def _rebuild(
         _build_export_calls(con, pricing, progress)
         _consolidate_results(con, pricing)
         _build_trajectories(con)
+        _classify_trajectories(con)
+        _build_function_calls(con, progress)
         calls = con.execute("SELECT count(*) FROM calls").fetchone()[0]
         trajectories = con.execute("SELECT count(*) FROM trajectories").fetchone()[0]
         con.execute("CHECKPOINT")
