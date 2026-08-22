@@ -21,7 +21,7 @@ def iter_requests(export_dir):
     if not chunks:
         sys.exit(f"no *.jsonl chunks found in {export_dir}")
     for p in chunks:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             for i, line in enumerate(f):
                 if line.strip():
                     yield p.name, i, json.loads(line)

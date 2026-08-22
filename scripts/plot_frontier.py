@@ -15,12 +15,11 @@ def quality(rec):  # PLACEHOLDER — replace with your outcome signal
     kept = sum(1 for i, m in enumerate(rec["route"]) if m == rec["logged_model"])
     return kept / len(rec["route"])
 
-def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else "results/routes.jsonl"
-    recs = [json.loads(l) for l in open(src)]
+def frontier_rows(recs):
+    """Sweep how much of the router's proposal to adopt: adopt for the cheapest X% of
+    trajectories first (they are the safest bets), keep the rest on the logged model.
+    Returns 11 rows (adopt_frac 0.0..1.0) with cost_usd and quality_placeholder."""
     total_calls = sum(r["n_calls"] for r in recs)
-    # Sweep how much of the router's proposal to adopt: adopt for the cheapest X% of
-    # trajectories first (they are the safest bets), keep the rest on the logged model.
     by_size = sorted(recs, key=lambda r: r["cost_logged_usd"])
     rows = []
     for frac in [i / 10 for i in range(0, 11)]:
@@ -29,6 +28,12 @@ def main():
         kept = sum((quality(r) if id(r) in adopt else 1.0) * r["n_calls"] for r in recs)
         rows.append({"adopt_frac": frac, "cost_usd": round(cost, 4),
                      "quality_placeholder": round(kept / total_calls, 3)})
+    return rows
+
+def main():
+    src = sys.argv[1] if len(sys.argv) > 1 else "results/routes.jsonl"
+    recs = [json.loads(l) for l in open(src)]
+    rows = frontier_rows(recs)
     out = Path(src).parent / "frontier.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
