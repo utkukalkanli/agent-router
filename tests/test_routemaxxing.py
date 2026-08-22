@@ -9,14 +9,17 @@ if str(SCRIPTS) not in sys.path:
 
 from cost_model import load_pricing
 from routemaxxing import (
+    _value_threshold,
     Call,
     Outcome,
     Trajectory,
     choose_initial,
+    choose_cost_effective_initial,
     infer_family,
     make_routes,
     outcome_from_items,
     route_cost,
+    route_cost_at_decision,
     trajectory_from_row,
 )
 
@@ -102,6 +105,9 @@ class RoutemaxxingTest(unittest.TestCase):
         switches = sum(route[i] != route[i - 1] for i in range(1, len(route)))
         self.assertLessEqual(switches, 1)
         self.assertNotIn("claude-fable-5", route)
+        if switches:
+            switch_index = next(i for i in range(1, len(route)) if route[i] != route[i - 1])
+            self.assertIn("cache-break-even", result["adaptive_reasons"][switch_index])
 
     def test_model_switch_resets_cache_and_has_positive_penalty(self):
         trajectory = trajectory_from_row(complete_row("claude-opus-5"), 0)
@@ -115,6 +121,62 @@ class RoutemaxxingTest(unittest.TestCase):
         self.assertEqual(same_penalty, 0)
         self.assertGreater(switch_penalty, 0)
         self.assertGreater(switched_cost, same_cost)
+
+    def test_adaptive_break_even_does_not_see_current_future_output(self):
+        trajectory = trajectory_from_row(complete_row("claude-opus-5"), 0)
+        route = ["claude-sonnet-5", "claude-opus-5"]
+        before = route_cost_at_decision(trajectory, route, load_pricing())
+        trajectory.calls[-1].output_tokens += 1_000_000
+        after = route_cost_at_decision(trajectory, route, load_pricing())
+        self.assertEqual(before, after)
+
+    def test_cost_effective_choice_falls_back_for_unsupported_default(self):
+        row = complete_row("gpt-5.6-luna")
+        row["tools"] = [tool("shell_command"), tool("apply_patch")]
+        trajectory = trajectory_from_row(row, 0)
+        model = DummyModel({"gpt-5.6-terra": 0.10, "gpt-5.6-sol": 0.08})
+        chosen, reasons, _, proposal = choose_cost_effective_initial(
+            trajectory, model, load_pricing(), {}, None,
+        )
+        self.assertEqual(chosen, "gpt-5.6-luna")
+        self.assertIn("unsupported-default-fallback", reasons)
+        self.assertEqual(proposal["fixed_savings"], 0.0)
+
+    def test_cost_effective_choice_is_same_family_cheaper_and_positive(self):
+        trajectory = trajectory_from_row(complete_row("claude-fable-5"), 0)
+        model = DummyModel({
+            "claude-sonnet-5": 0.11,
+            "claude-opus-5": 0.10,
+            "claude-fable-5": 0.09,
+        })
+        chosen, _, _, proposal = choose_cost_effective_initial(
+            trajectory, model, load_pricing(), {}, None,
+        )
+        self.assertIn(chosen, {"claude-sonnet-5", "claude-opus-5"})
+        self.assertLess(
+            load_pricing()[chosen][0], load_pricing()[trajectory.logged_model][0],
+        )
+        self.assertGreater(proposal["fixed_savings"], 0.0)
+        self.assertGreater(proposal["adjusted_savings"], 0.0)
+
+    def test_opening_features_do_not_change_with_future_items(self):
+        first = trajectory_from_row(complete_row(), 0)
+        row = complete_row()
+        row["input"].insert(-1, {"type": "function_call_output", "output": "future error"})
+        second = trajectory_from_row(row, 1)
+        self.assertEqual(first.feature_values, second.feature_values)
+
+    def test_training_value_threshold_applies_to_proposal_scores(self):
+        trajectories = [trajectory_from_row(complete_row(), i) for i in range(4)]
+        for i, trajectory in enumerate(trajectories):
+            trajectory.trajectory_id = str(i)
+        proposals = {
+            str(i): {
+                "certified": ["claude-sonnet-5"],
+                "proposal": {"value_per_risk": float(i)},
+            } for i in range(4)
+        }
+        self.assertEqual(_value_threshold(trajectories, proposals, 0.5), 2.0)
 
 
 if __name__ == "__main__":
