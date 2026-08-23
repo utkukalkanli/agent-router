@@ -1,0 +1,5 @@
+make a live demo, and make it runnable on github io
+
+---
+
+make the /Users/utkukalkanli/Developer/viktor/ai-slop-router/presentation-routemaxxing.html a pdf
