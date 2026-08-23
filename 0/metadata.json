@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0Q08EST9B7BSQ4KXSKH50A7",
+  "session_id": "01a02b29-44fa-7fe1-afce-dd57ca99b72c",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-23T09:47:12.648286Z",
+  "branch": "routemaxing",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/pages.yml",
+    "README.md",
+    "docs/.nojekyll",
+    "docs/app.js",
+    "docs/index.html",
+    "docs/styles.css",
+    "explorer/README.md",
+    "pytest.ini",
+    "scripts/build_live_demo.py",
+    "tests/test_live_demo.py"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "9b2764012f67",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 757140,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 33826432,
+    "output_tokens": 150318,
+    "api_call_count": 312
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-23T09:47:12.278917Z",
+    "agent_lines": 597,
+    "agent_removed": 0,
+    "human_added": 386,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 983,
+    "total_lines_changed": 983,
+    "agent_percentage": 60.73245167853509,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1872,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "initial_context/cache-aware.txt": 30,
+        "initial_context/description.txt": 51,
+        "initial_context/initial_prompt.txt": 2,
+        "initial_context/pdf_texts.txt": 399,
+        "initial_context/prompt.txt": 270,
+        "initial_context/setup_baseline_report.txt": 66,
+        "initial_context/tumai-combined-deck-v2.html": 1053,
+        "scripts/routemaxxing.py": 1
+      },
+      "user_removed_per_file": {
+        "scripts/routemaxxing.py": 1
+      }
+    }
+  ]
+}

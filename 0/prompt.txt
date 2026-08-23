@@ -1,0 +1,94 @@
+Improve Routemaxxing’s certified router to reduce estimated cache-aware cost beyond the current public-validation result, without
+  weakening evaluation rigor.
+
+  Current reference:
+  - Public validation logged cost: about $88.50
+  - Current routed cost: about $68.98
+  - Current savings: 22.39%
+  - Estimated failure delta: −0.68 percentage points
+  - One-sided 95% upper bound: −0.50 percentage points
+  - Validation routed coverage: 41.7%
+  - Organizer-held-out split is not available yet
+
+  Primary objective:
+  Minimize estimated cache-aware total cost subject to:
+
+  1. The one-sided 95% upper confidence bound on proxy-failure degradation must remain <= +2 percentage points.
+  2. The behavior-adjusted cost sensitivity must also improve over the current router.
+  3. Never choose a model more expensive than the configured default in certified mode.
+  4. Preserve model family:
+     - bash/file_edit tool dialect -> Claude family
+     - shell_command/apply_patch tool dialect -> GPT family
+     Do not claim cross-family effects because the dataset has no tool-dialect overlap.
+  5. Use one model for the entire trajectory in the certified policy.
+  6. Adaptive routing may switch at most once, may only escalate, and must be reported separately as conditional on logged states.
+  7. Never introduce a route with negative estimated savings.
+  8. Unsupported actions must fall back to the configured default model.
+
+  Evaluation constraints:
+  - Keep the existing deterministic train/validation split and its seed unchanged.
+  - Do not tune thresholds, features, outcome labels, or policy coverage using validation results.
+  - Do not use future information in routing features:
+    no eventual tool calls, final trajectory depth, future errors, or final output.
+  - Keep the existing automatic failure-proxy definition fixed unless a change is proposed as a separately reported sensitivity analysis.
+  - Token counts must remain clearly labeled estimates based on serialized JSON chars/4.
+  - Cost must include:
+    - tool schemas on every request,
+    - cached and uncached input rates,
+    - observable output costs,
+    - full cache reset after a model switch.
+  - Treat each trajectory’s final output as unobservable in the primary estimate.
+  - Report propensity support, routed coverage, effective sample size, failure delta, one-sided 95% upper bound, fixed-shape cost, and
+  behavior-adjusted cost.
+  - Do not describe proxy quality as measured task quality.
+  - Do not use the organizer-held-out split for development when it arrives; run the locked policy on it only once.
+
+  Investigate these cost-reduction levers:
+  - Rank downgrade proposals by estimated dollars saved per unit of predicted failure risk.
+  - Improve supported routing coverage using better pre-decision features and calibrated partial pooling.
+  - Test whether task intent, trigger type, initial prompt size, toolset, image presence, and side-effect risk identify additional safe
+  downgrades.
+  - Examine why supported trajectories remain on expensive models.
+  - Improve model-specific output-length sensitivity estimates.
+  - Quantify whether GPT Luna has enough support; do not route to it if propensity or effective-sample requirements fail.
+  - Add an explicit cache break-even check to adaptive escalation.
+  - Sweep quality margins and adoption thresholds on training data only.
+
+  Required comparison:
+  - Logged behavior
+  - Corrected heuristic baseline
+  - Current Routemaxxing certified policy
+  - Each proposed ablation
+  - Final improved certified policy
+  - Adaptive policy as a separate, non-certified result
+
+  Acceptance criteria:
+  - Cost is lower than the current certified router on public validation.
+  - Failure upper95 remains <= +0.02.
+  - Behavior-adjusted savings remain positive and improve.
+  - No certified upgrades, cross-family routes, or model switches.
+  - All route IDs join the explorer.
+  - All existing and new tests pass.
+  - If no defensible improvement exists, report that honestly instead of relaxing constraints.
+
+  Before editing:
+  1. Inspect the current implementation and generated artifacts.
+  2. State the proposed change and why it could reduce cost without increasing unsupported extrapolation.
+  3. Preserve unrelated files and initial_context/.
+  4. Work on the current routemaxing branch.
+
+---
+
+push changes to remote
+
+---
+
+give me a short definition of what does this project do
+
+---
+
+and tech stack of this project, comma separated
+
+---
+
+make a live demo, and make it runnable on github io
