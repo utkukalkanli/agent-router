@@ -3,7 +3,7 @@
   "checkpoint_id": "01M0QBQJVTJCDQ8DW8XPFXZ0WE",
   "strategy": "manual-commit",
   "branch": "routemaxing",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "presentation-routemaxxing.html",
     "presentation-routemaxxing.pdf",
@@ -16,13 +16,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 97807,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 2433792,
-    "output_tokens": 7100,
-    "api_call_count": 37
+    "input_tokens": 97973,
+    "cache_creation_tokens": 337688,
+    "cache_read_tokens": 10678790,
+    "output_tokens": 52097,
+    "api_call_count": 120
   }
 }
