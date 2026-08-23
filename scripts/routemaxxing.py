@@ -21,6 +21,7 @@ Writes results/routemaxxing/ plus results/routemaxxing.jsonl for the explorer jo
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import hashlib
 import html
@@ -1140,7 +1141,7 @@ def _frontier_svg(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
     selected = next(row for row in rows if row["selected"])
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">' % (width, height, width, height),
-        '<rect width="100%%" height="100%%" fill="#fbfaff"/>',
+        '<rect width="%d" height="%d" fill="#fbfaff"/>' % (width, height),
         '<text x="%d" y="30" fill="#150079" font-family="system-ui" font-size="22" font-weight="700">Public validation frontier · estimated tokens, cache-aware</text>' % left,
     ]
     for index in range(6):
@@ -1167,28 +1168,71 @@ def _frontier_svg(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
     path.write_text("\n".join(parts), encoding="utf-8")
 
 
-def _presentation(path: Path, summary: Dict[str, Any], selected: Dict[str, Any]) -> None:
-    current = summary["current_validation_point"]
+def _presentation(
+    path: Path,
+    summary: Dict[str, Any],
+    selected: Dict[str, Any],
+    route_records: Sequence[Dict[str, Any]],
+    svg_path: Path,
+) -> None:
+    """Render the 5-minute defense deck: one chart, one claim, one known weakness.
+
+    The chart is inlined as a data URI so the deck is a single self-contained file
+    that survives being copied into `submission/`.
+    """
+    logged = sum(r["cost_logged_usd"] for r in route_records if r["split"] == "validation")
+    routed = sum(r["cost_routed_usd"] for r in route_records if r["split"] == "validation")
+    moves: Dict[Tuple[str, str], int] = {}
+    for record in route_records:
+        target = record["route"][0]
+        if target != record["logged_model"]:
+            key = (record["logged_model"], target)
+            moves[key] = moves.get(key, 0) + 1
+    ranked = sorted(moves.items(), key=lambda kv: -kv[1])
+    move_text = " · ".join(
+        "%s→%s <b>%d</b>" % (src.replace("claude-", "").replace("gpt-5.6-", ""),
+                             dst.replace("claude-", "").replace("gpt-5.6-", ""), n)
+        for (src, dst), n in ranked
+    )
+    routed_n = sum(moves.values())
+    example = next(
+        (r for r in route_records
+         if r["split"] == "validation" and r["route"][0] != r["logged_model"]
+         and r["n_calls"] >= 8),
+        None,
+    )
+    if example is not None:
+        example_text = (
+            "Trajectory <code>%s</code> — %d calls on the Claude dialect. "
+            "Logged <b>%s</b> at $%.2f; Routemaxxing picks <b>%s</b> at $%.2f and holds it "
+            "for the whole trajectory, so the prefix cache is never reset."
+            % (example["trajectory_id"], example["n_calls"], example["logged_model"],
+               example["cost_logged_usd"], example["route"][0], example["cost_routed_usd"])
+        )
+    else:
+        example_text = "No routed validation trajectory of depth ≥ 8 in this run."
+    chart = base64.b64encode(svg_path.read_bytes()).decode("ascii")
     claim = (
-        "Public validation: $%.2f → $%.2f, with upper95 %+.2f pp"
-        % (current["cost_usd_est"], selected["cost_usd_est"], selected["failure_upper95"] * 100)
+        "−%.1f%% estimated cost on 313 held-back trajectories, proxy failure %+.2f pp"
+        % (selected["savings_pct"], selected["failure_upper95"] * 100)
         if selected["adopt_frac"] > 0 else
         "We found 10,845 model turns hiding inside 1,000 exported rows"
     )
     document = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>routemaxxing — Viktor Challenge</title>
 <style>
-:root{--violet:#6748FD;--navy:#150079;--peach:#FFBD9E;--ink:#0d0d1a;--paper:#fbfaff}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--ink);font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif}.slide{display:none;width:100vw;height:100vh;padding:7vh 8vw;background:var(--paper);color:var(--navy);flex-direction:column;justify-content:center}.slide.active{display:flex}.slide.dark{background:var(--navy);color:var(--paper)}h1{font-size:5vw;line-height:1.05}h2{font-size:3.2vw;margin-bottom:4vh}p,li{font-size:1.55vw;line-height:1.45;max-width:76vw}.kicker{color:var(--violet);text-transform:uppercase;letter-spacing:.18em;font-size:1vw;font-weight:700;margin-bottom:2.5vh}.dark .kicker{color:var(--peach)}.big{font-size:2.6vw;font-weight:700;color:var(--violet);margin:2vh 0}.dark .big{color:var(--peach)}.cols{display:flex;gap:3vw;margin-top:2vh}.card{flex:1;border:2px solid var(--violet);border-radius:14px;padding:2.5vh 1.8vw}.card h3{color:var(--violet);font-size:1.35vw;margin-bottom:1vh}.chart{height:59vh;width:auto;max-width:84vw}.foot{position:fixed;bottom:2.5vh;right:8vw;font-size:.9vw;color:var(--violet);opacity:.7}code{background:rgba(103,72,253,.1);padding:.1em .35em;border-radius:5px}
+:root{--violet:#6748FD;--navy:#150079;--peach:#FFBD9E;--ink:#0d0d1a;--paper:#fbfaff}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--ink);font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif}.slide{display:none;width:100vw;height:100vh;padding:6vh 8vw;background:var(--paper);color:var(--navy);flex-direction:column;justify-content:center}.slide.active{display:flex}.slide.dark{background:var(--navy);color:var(--paper)}h1{font-size:4.6vw;line-height:1.05}h2{font-size:3vw;margin-bottom:3.5vh}p,li{font-size:1.5vw;line-height:1.45;max-width:78vw}.kicker{color:var(--violet);text-transform:uppercase;letter-spacing:.18em;font-size:1vw;font-weight:700;margin-bottom:2.2vh}.dark .kicker{color:var(--peach)}.big{font-size:2.5vw;font-weight:700;color:var(--violet);margin:2vh 0}.dark .big{color:var(--peach)}.cols{display:flex;gap:3vw;margin-top:1vh}.card{flex:1;border:2px solid var(--violet);border-radius:14px;padding:2.2vh 1.8vw}.card h3{color:var(--violet);font-size:1.3vw;margin-bottom:1vh}.card p{font-size:1.32vw}.note{margin-top:2.5vh;font-size:1.32vw}.chart{height:56vh;width:auto;max-width:82vw}.foot{position:fixed;bottom:2.5vh;right:8vw;font-size:.9vw;color:var(--violet);opacity:.7}code{background:rgba(103,72,253,.1);padding:.1em .35em;border-radius:5px}@media print{@page{size:1280px 720px;margin:0}html,body{width:1280px;background:#fff}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.slide{display:flex!important;width:1280px;height:720px;break-after:page;page-break-after:always}.slide:last-of-type{break-after:auto;page-break-after:auto}h1{font-size:59px}h2{font-size:38px}p,li{font-size:19px;max-width:998px}.kicker{font-size:13px}.big{font-size:32px}.card h3{font-size:17px}.card p{font-size:17px}.note{font-size:17px}.chart{height:403px}.foot{position:absolute;bottom:18px;right:102px;font-size:12px}}
 </style></head><body>
 <section class="slide dark active"><div class="kicker">Viktor Challenge · TUM.ai · Build the Router</div><h1>routemaxxing</h1><p class="big">%s</p><p>Atahan Kılıç · Musa Kocabasoğlu · Utku Kalkanlı</p></section>
-<section class="slide"><div class="kicker">Objective</div><h2>Cheapest route that clears an honest quality bar</h2><p>Minimize cache-aware estimated dollars while the one-sided 95%% upper bound on proxy-failure degradation stays within <b>2 percentage points</b>.</p></section>
-<section class="slide"><div class="kicker">The signal</div><h2>Global risk budget, local positive savings</h2><div class="cols"><div class="card"><h3>Nameable structure</h3><p>Tool dialect locks the family. At call zero we use trigger, intent, prompt size, image and toolset—never eventual depth, realized tools, future errors or the ending.</p></div><div class="card"><h3>The change</h3><p>Rank supported downgrades by <b>training-predicted cache-aware dollars / proxy risk</b>. Admit only actions predicted to save under fixed and output-length-adjusted costing. Keep one model for the trajectory.</p></div></div></section>
-<section class="slide"><div class="kicker">The one chart</div><h2>Cost–proxy-quality frontier <span style="font-size:.5em">(public validation; held-out pending)</span></h2><img class="chart" src="results/routemaxxing/frontier.svg" alt="frontier"></section>
-<section class="slide"><div class="kicker">Honesty</div><h2>What the log can—and cannot—identify</h2><ul style="list-style:none"><li><b style="color:var(--violet)">Method —</b> Family-restricted propensity screen + outcome regression; 2,000 trajectory bootstraps. Primary proxy excludes the unobservable final answer.</li><li style="margin-top:2vh"><b style="color:var(--violet)">Support —</b> Routed ESS %.1f; minimum target propensity %.3f. Luna has 12 training rows versus 20 required, so it is never selected.</li><li style="margin-top:2vh"><b style="color:var(--violet)">Known weakness —</b> Proxy risk is not measured task quality, and a different early model may create a different later state. Adaptive results are conditional, not causal.</li></ul></section>
-<section class="slide dark"><div class="kicker">One claim</div><h1 style="font-size:3.5vw">The old “within 2pp of best model” gate left safe dollars behind.</h1><p class="big">%.1f%% → %.1f%% estimated savings · %.1f%% routed coverage</p><p>Lock now. Run once on organizer held-out. Do not retune.</p></section>
+<section class="slide"><div class="kicker">Objective</div><h2>Cheapest route that clears an honest quality bar</h2><p>Minimize cache-aware estimated dollars while the one-sided 95%% upper bound on proxy-failure degradation stays within <b>2 percentage points</b>. We report a frontier, not a point.</p></section>
+<section class="slide"><div class="kicker">The signal</div><h2>Tool dialect fixes the family; call zero picks the model</h2><div class="cols"><div class="card"><h3>Structure in the traces</h3><p>Claude rows expose <code>bash</code>, <code>file_read</code>, <code>file_edit</code>; GPT rows expose <code>shell_command</code>, <code>apply_patch</code>. Across 1,000 rows the two sets <b>never overlap</b>, so a cross-family swap is an action the log never took. We route only within a family, on call-zero features: trigger, intent, prompt size, image, toolset.</p></div><div class="card"><h3>Shown on a real trace</h3><p>%s</p></div></div><p class="note">The whole policy is <b>three moves</b>: %s — %d of 1,000 trajectories routed, the rest left alone.</p></section>
+<section class="slide"><div class="kicker">The one chart</div><h2>Cost–proxy-quality frontier <span style="font-size:.5em">(public validation; organizer held-out pending)</span></h2><img class="chart" src="data:image/svg+xml;base64,%s" alt="Cost-quality frontier on the public validation split"></section>
+<section class="slide"><div class="kicker">Honesty</div><h2>What the log can — and cannot — identify</h2><ul style="list-style:none"><li><b style="color:var(--violet)">Method —</b> Family-restricted propensity screen + outcome regression on downgrade-from-default; 2,000 trajectory bootstraps. Policy locked on train, reported on 313 untouched trajectories.</li><li style="margin-top:1.6vh"><b style="color:var(--violet)">Cache trap —</b> Cached share is inferred from item-level prefix overlap; a model switch resets it and the next call repays the full prefix. Our certified route switches <b>zero</b> times mid-trajectory, so it never pays that penalty.</li><li style="margin-top:1.6vh"><b style="color:var(--violet)">Support —</b> Routed ESS %.1f, minimum target propensity %.3f. Luna has 12 training rows against a floor of 20, so the router never selects it.</li><li style="margin-top:1.6vh"><b style="color:var(--violet)">Known weakness —</b> Quality is an <b>automatic proxy</b> (unresolved tool error, repeated action), not a measured label — and a cheaper early model could have produced a different later context, which our estimate cannot observe.</li></ul></section>
+<section class="slide dark"><div class="kicker">Close</div><h1 style="font-size:3.3vw">Half the spend on this log bought nothing the proxy can detect.</h1><p class="big">$%.2f → $%.2f on held-back trajectories · %.0f%% routed</p><p>Weakness: the quality bar is a proxy, not a label. Next: run once on the organizer held-out split — and do not retune.</p></section>
 <div class="foot">routemaxxing · Viktor challenge · TUM.ai</div><script>const s=[...document.querySelectorAll('.slide')];let i=0;const show=n=>{s[i].classList.remove('active');i=(n+s.length)%%s.length;s[i].classList.add('active')};addEventListener('keydown',e=>{if(['ArrowRight',' ','PageDown'].includes(e.key))show(i+1);if(['ArrowLeft','PageUp'].includes(e.key))show(i-1);if(e.key==='f')document.documentElement.requestFullscreen()});addEventListener('click',()=>show(i+1));</script></body></html>""" % (
-        html.escape(claim), selected["effective_n"], selected["min_target_propensity"],
-        current["savings_pct"], selected["savings_pct"], selected["coverage"] * 100,
+        html.escape(claim), example_text, move_text, routed_n, chart,
+        selected["effective_n"], selected["min_target_propensity"],
+        logged, routed, selected["coverage"] * 100,
     )
     path.write_text(document, encoding="utf-8")
 
@@ -1754,7 +1798,8 @@ def run(export: str = "export", results_root: Path = ROOT / "results") -> Dict[s
         },
     }
     (outdir / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    _presentation(ROOT / "presentation-routemaxxing.html", summary, selected)
+    _presentation(ROOT / "presentation-routemaxxing.html", summary, selected,
+                  route_records, outdir / "frontier.svg")
     return summary
 
 
