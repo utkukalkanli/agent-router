@@ -44,6 +44,21 @@ and a fully traceable summary under `results/routemaxxing/`. It also writes
 outputs are excluded in the briefing-compatible primary analysis, and adaptive quality
 is explicitly conditional on the logged context.
 
+### Live demo
+
+The aggregate-only Router Lab is deployable as a static GitHub Pages site:
+
+```bash
+python scripts/build_live_demo.py
+python -m http.server 4173 -d docs
+```
+
+Open <http://127.0.0.1:4173>. The published URL is
+<https://atahankilc.github.io/ai-slop-router/>. The page contains the interactive
+certified policy, a cache-aware cost simulator, the validation frontier, and required
+comparisons. It deliberately ships no challenge trajectories, prompts, tools, or route
+ids. `.github/workflows/pages.yml` deploys `docs/` on pushes to `main` or `routemaxing`.
+
 ## Using a coding agent
 
 Point Claude Code / Codex / Cursor / opencode at this repo — `AGENTS.md` briefs your agent.

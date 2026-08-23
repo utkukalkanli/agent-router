@@ -23,6 +23,11 @@ npm run build
 The production bundle is committed under `explorer/static/`, so Node is not
 needed to run the explorer. Dataset rows are never included in that bundle.
 
+The full explorer needs FastAPI and DuckDB because it queries the local challenge
+export. For a public, backend-free demonstration, use the aggregate-only Router Lab in
+`docs/`; build it with `python scripts/build_live_demo.py` and preview it with
+`python -m http.server 4173 -d docs`.
+
 ## What the tabs show
 
 | Tab | What it answers |
