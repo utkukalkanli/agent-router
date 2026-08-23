@@ -53,11 +53,12 @@ python scripts/build_live_demo.py
 python -m http.server 4173 -d docs
 ```
 
-Open <http://127.0.0.1:4173>. The published URL is
-<https://atahankilc.github.io/ai-slop-router/>. The page contains the interactive
+Open <http://127.0.0.1:4173>. The live deployment is
+<https://utkukalkanli.github.io/routemaxxing/>. The page contains the interactive
 certified policy, a cache-aware cost simulator, the validation frontier, and required
 comparisons. It deliberately ships no challenge trajectories, prompts, tools, or route
-ids. `.github/workflows/pages.yml` deploys `docs/` on pushes to `main` or `routemaxing`.
+ids. `.github/workflows/pages.yml` can deploy `docs/` from this repository after its
+owner enables GitHub Pages with GitHub Actions as the source.
 
 ## Using a coding agent
 
