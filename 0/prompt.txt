@@ -1,0 +1,34 @@
+tamam simdi bunu vercel ile deploy etmek, sonra github ı makyajlamak (github reposunu) mantıklı mı sence? about kısmına vercel linkini falan koy tagler koy. güzel gözüksün. bunlar portfolyo için çünkü hep
+
+---
+
+evet readme'yi de yaz, commitle
+
+---
+
+git push yap
+
+---
+
+yap
+
+---
+
+about me deki linkten tıklayınca 
+
+<pasted_content id="dfec">
+This page doesn’t exist
+It may have been moved, removed, or never existed.
+
+404 NOT_FOUND
+
+fra1::fzwht-1793452824816-ebdf37608a98
+</pasted_content id="dfec">
+
+---
+
+evet öyle yapmısım. güzel oldu eline sağlık
+
+---
+
+vercel'i github'a bağla, push'ta otomatik deploy olsun
