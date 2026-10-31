@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the aggregate-only static Routemaxxing demo for GitHub Pages.
+"""Build the aggregate-only static Routemaxxing demo (deployed to Vercel).
 
 This exporter intentionally whitelists aggregate evaluation fields. It never reads or
 ships prompts, tools, trajectory ids, route ledgers, or any other challenge row data.

@@ -43,9 +43,7 @@ def test_certified_demo_routes_preserve_family_and_never_upgrade():
         assert all(a <= b for a, b in zip(pricing[selected], pricing[default]))
 
 
-def test_pages_workflow_deploys_docs_directory():
-    workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
-    assert "actions/configure-pages@v5" in workflow
-    assert "actions/upload-pages-artifact@v4" in workflow
-    assert "actions/deploy-pages@v4" in workflow
-    assert "path: docs" in workflow
+def test_vercel_deploy_excludes_local_env_files():
+    ignored = (ROOT / "docs" / ".vercelignore").read_text().splitlines()
+    assert ".env*" in ignored
+    assert ".vercel" in ignored
