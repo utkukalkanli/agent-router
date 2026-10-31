@@ -1,0 +1,1 @@
+tamam simdi bunu vercel ile deploy etmek, sonra github ı makyajlamak (github reposunu) mantıklı mı sence? about kısmına vercel linkini falan koy tagler koy. güzel gözüksün. bunlar portfolyo için çünkü hep
