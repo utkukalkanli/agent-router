@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Interactive Routemaxxing model-router and cache-aware cost demo." />
+    <meta name="theme-color" content="#150079" />
+    <title>Routemaxxing · Router Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-head">
+      <a class="wordmark" href="#top" aria-label="Routemaxxing home">
+        <span class="mark">R×</span><span>routemaxxing</span>
+      </a>
+      <nav aria-label="Page sections">
+        <a href="#lab">Router lab</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#method">Method</a>
+      </nav>
+      <a class="button ghost" href="https://github.com/atahankilc/ai-slop-router" rel="noreferrer">View source ↗</a>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="eyebrow">Viktor Challenge · static offline demo</div>
+        <h1>Spend the model<br /><em>only where it matters.</em></h1>
+        <p class="lead">A family-preserving router that assigns one supported model to an entire agent trajectory, priced with prefix caching and evaluated with an explicit proxy-risk bound.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#lab">Try the router</a>
+          <a class="text-link" href="#evidence">Inspect the evidence ↓</a>
+        </div>
+        <div class="metric-strip" aria-label="Headline evaluation metrics">
+          <div><span>Public-validation cost</span><strong id="hero-cost">—</strong><small id="hero-cost-note">—</small></div>
+          <div><span>Estimated savings</span><strong id="hero-savings">—</strong><small>cache-aware, observable output included</small></div>
+          <div><span>Failure upper95</span><strong id="hero-upper">—</strong><small>automatic proxy, not measured quality</small></div>
+          <div><span>Routed coverage</span><strong id="hero-coverage">—</strong><small id="hero-support">—</small></div>
+        </div>
+      </section>
+
+      <section id="lab" class="section lab-section">
+        <div class="section-head">
+          <div><div class="eyebrow">Live certified policy</div><h2>Route a trajectory</h2></div>
+          <p>Change the call-zero context and workload shape. The decision uses only the configured default and tool dialect; the calculator then reprices the same estimated trajectory under both models.</p>
+        </div>
+
+        <div class="lab-grid">
+          <form id="router-form" class="panel controls">
+            <div class="panel-label">01 · Decision context</div>
+            <label>Configured default model<select id="default-model"></select></label>
+            <label>Tool dialect<select id="dialect"><option value="claude">bash / file_edit · Claude</option><option value="gpt">shell_command / apply_patch · GPT</option></select></label>
+            <div class="field-row">
+              <label>Task intent<select id="intent"><option>Code or file edit</option><option>Read or research</option><option>Message or notify</option><option>High-stakes action</option><option>Other</option></select></label>
+              <label>Trigger<select id="trigger"><option>User</option><option>Cron</option><option>Automation</option><option>Unknown</option></select></label>
+            </div>
+            <label class="check"><input id="has-image" type="checkbox" /><span>Initial request contains an image</span></label>
+
+            <div class="panel-label split-label">02 · Cost shape <span>estimates</span></div>
+            <div class="field-row three">
+              <label>Calls<input id="calls" type="number" min="1" max="100" value="10" /></label>
+              <label>Opening tokens<input id="opening" type="number" min="1" value="24000" /></label>
+              <label>Tool schema tokens<input id="schemas" type="number" min="0" value="4500" /></label>
+            </div>
+            <div class="field-row">
+              <label>New history / later call<input id="growth" type="number" min="0" value="1800" /></label>
+              <label>Observable output / call<input id="output" type="number" min="0" value="190" /></label>
+            </div>
+            <p class="fineprint">Tokens are user-supplied estimates. The final output is excluded. Tool schemas are billed on every request; a same-model prefix is billed at the cache-read rate.</p>
+          </form>
+
+          <section class="panel decision" aria-live="polite">
+            <div class="panel-label">Certified decision</div>
+            <div class="route-line"><div><span>Default</span><strong id="logged-model">—</strong></div><span class="route-arrow">→</span><div><span>Selected</span><strong id="selected-model">—</strong></div></div>
+            <div id="decision-badge" class="decision-badge">—</div>
+            <p id="decision-reason" class="decision-reason">—</p>
+
+            <div class="cost-pair">
+              <div><span>Default route</span><strong id="logged-cost">—</strong></div>
+              <div class="good"><span>Certified route</span><strong id="routed-cost">—</strong></div>
+            </div>
+            <div class="saving-bar"><i id="saving-fill"></i></div>
+            <div class="saving-copy"><strong id="saving-dollar">—</strong><span id="saving-percent">—</span></div>
+            <div class="sensitivity"><span>Output-length sensitivity</span><strong id="adjusted-cost">—</strong><small id="adjusted-note">—</small></div>
+            <div id="reason-codes" class="chips"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="evidence" class="section evidence-section">
+        <div class="section-head">
+          <div><div class="eyebrow">Public validation</div><h2>The cost–proxy-risk frontier</h2></div>
+          <p>Every point is a training-locked adoption threshold evaluated on public validation. Lower cost is better; the primary outcome is an automatic failure proxy.</p>
+        </div>
+        <div class="evidence-grid">
+          <div class="panel chart-panel">
+            <svg id="frontier-chart" viewBox="0 0 760 390" role="img" aria-label="Cost and proxy-failure frontier"></svg>
+            <div class="chart-legend"><span><i class="dot"></i>training-locked frontier</span><span><i class="dot selected-dot"></i>certified selection</span></div>
+          </div>
+          <div class="panel selected-card">
+            <div class="panel-label">Locked point</div>
+            <strong id="selected-savings-big">—</strong><span>estimated savings</span>
+            <dl>
+              <div><dt>Fixed-shape cost</dt><dd id="selected-fixed">—</dd></div>
+              <div><dt>Behavior-adjusted</dt><dd id="selected-adjusted">—</dd></div>
+              <div><dt>Effective sample size</dt><dd id="selected-ess">—</dd></div>
+              <div><dt>Minimum propensity</dt><dd id="selected-propensity">—</dd></div>
+            </dl>
+            <p>The locked policy adopts every positive-savings proposal in common support. Richer opening features and propensity pooling found the same routes, so the simpler policy wins.</p>
+          </div>
+        </div>
+        <div class="panel table-panel"><div class="panel-label">Required comparison</div><div class="table-scroll"><table><thead><tr><th>Policy</th><th>Fixed cost</th><th>Adjusted</th><th>Savings</th><th>Upper95</th><th>Coverage</th><th>ESS</th></tr></thead><tbody id="comparison-body"></tbody></table></div></div>
+      </section>
+
+      <section id="method" class="section method-section">
+        <div class="section-head"><div><div class="eyebrow">Evaluation contract</div><h2>What makes it certified</h2></div><p>The constraints are executable policy guards, not presentation caveats.</p></div>
+        <div id="constraints" class="constraint-grid"></div>
+        <div class="weakness"><span>Known weakness</span><p id="weakness-copy"></p></div>
+      </section>
+    </main>
+
+    <footer class="page-foot"><div><strong>routemaxxing</strong><span>Atahan Kılıç · Musa Kocabasoğlu · Utku Kalkanlı</span></div><p>This GitHub Pages build contains aggregate evidence only. No challenge trajectories, prompts, tools, or route IDs are distributed.</p></footer>
+    <script src="./data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
