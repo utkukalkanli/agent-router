@@ -1,0 +1,5 @@
+yeni isim agent-router. ai-slop-router ismini her yerden yok et. ata koydu onu. sonra o remote taki değişiklikleri alalım ve burada merge etmeye calısalım locale
+
+---
+
+iki tarafı da tek branchte topla yani
